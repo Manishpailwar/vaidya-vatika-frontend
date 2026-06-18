@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getUser, updateUser, getOrdersByEmail } from '../api/api'
+import { getUser, updateUser, getMyOrders } from '../api/api'
 import toast from 'react-hot-toast'
 import ConfirmDialog from '../components/ConfirmDialog'
 
@@ -54,7 +54,7 @@ export default function Profile() {
         .catch(() => {})
     }
 
-    getOrdersByEmail(u.email)
+    getMyOrders()
       .then(res => setOrders(Array.isArray(res.data) ? res.data : []))
       .catch(() => {})
   }, [navigate])
@@ -132,9 +132,7 @@ export default function Profile() {
               {user.joinedAt ? `Member since ${new Date(user.joinedAt).toLocaleDateString('en-IN',{ month:'long', year:'numeric' })}` : 'Welcome back!'}
             </p>
           </div>
-          <button onClick={handleLogout} style={{ marginLeft:'auto', background:'rgba(255,255,255,0.12)', color:'#fff', border:'2px solid rgba(255,255,255,0.25)', padding:'10px 22px', borderRadius:50, fontWeight:600, fontSize:13, cursor:'pointer', fontFamily:'Lato,sans-serif' }}>
-            Sign Out
-          </button>
+
         </div>
       </div>
 

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { loginUser, registerUser } from '../api/api'
+import { loginUser, registerUser, resendVerification } from '../api/api'
 import toast from 'react-hot-toast'
 
 const Field = ({ label, name, type='text', placeholder, form, setForm, errors, setErrors, showPwd, icon }) => (
@@ -28,6 +28,9 @@ export default function LoginRegister() {
   const [errors, setErrors]         = useState({})
   const [loading, setLoading]       = useState(false)
   const [showPwd, setShowPwd]       = useState(false)
+  const [registered, setRegistered]   = useState(null)  // email after successful register
+  const [unverifiedEmail, setUnverifiedEmail] = useState(null) // email blocked at login
+  const [resending, setResending]     = useState(false)
 
   const validateLogin = () => {
     const e = {}
@@ -53,12 +56,15 @@ export default function LoginRegister() {
       const res = await loginUser({ email: loginForm.email, password: loginForm.password })
       localStorage.setItem('vv_current_user', JSON.stringify(res.data))
       if (res.data.token) localStorage.setItem('vv_token', res.data.token)
-      if (res.data.token) localStorage.setItem('vv_token', res.data.token)
       toast.success(`Welcome back, ${res.data.name}! 🌿`, { style:{ background:'var(--forest)', color:'#fff', borderRadius:12 } })
       navigate('/')
     } catch (err) {
       const msg = err.response?.data?.message || 'Invalid email or password'
-      setErrors({ password: msg })
+      if (msg === 'EMAIL_NOT_VERIFIED') {
+        setUnverifiedEmail(loginForm.email)
+      } else {
+        setErrors({ password: msg })
+      }
     } finally { setLoading(false) }
   }
 
@@ -66,15 +72,83 @@ export default function LoginRegister() {
     if (!validateRegister()) return
     setLoading(true)
     try {
-      const res = await registerUser({ name: regForm.name, email: regForm.email, password: regForm.password, phone: regForm.phone })
-      localStorage.setItem('vv_current_user', JSON.stringify(res.data))
-      toast.success(`Welcome to Vaidya Vatika, ${res.data.name}! 🌿`, { style:{ background:'var(--forest)', color:'#fff', borderRadius:12 } })
-      navigate('/')
+      await registerUser({ name: regForm.name, email: regForm.email, password: regForm.password, phone: regForm.phone })
+      setRegistered(regForm.email)  // show the "check your email" screen
     } catch (err) {
       const msg = err.response?.data?.message || 'Registration failed. Please try again.'
-      if (msg.includes('email')) setErrors({ email: msg })
-      else toast.error(msg)
+      if (msg.startsWith('UNVERIFIED_RESENT:')) {
+        // Account exists but unverified — we resent the email, show check-email screen
+        const email = msg.split(':')[1]
+        setRegistered(email)
+      } else if (msg.includes('email')) {
+        setErrors({ email: msg })
+      } else {
+        toast.error(msg)
+      }
     } finally { setLoading(false) }
+  }
+
+  const handleResend = async (email) => {
+    setResending(true)
+    try {
+      await resendVerification(email)
+      toast.success('Verification email resent! Check your inbox.', { style:{ background:'var(--forest)', color:'#fff', borderRadius:12 } })
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not resend. Try again.')
+    } finally { setResending(false) }
+  }
+
+  // ── Check-your-email screen (shown after successful registration) ──
+  if (registered) {
+    return (
+      <div style={{ paddingTop:70, minHeight:'100vh', background:'linear-gradient(135deg,#1a3a08 0%,#2D5016 50%,#3d6b1f 100%)', display:'flex', alignItems:'center', justifyContent:'center', padding:'40px 24px' }}>
+        <div style={{ background:'#fff', borderRadius:28, padding:'48px 40px', maxWidth:480, width:'100%', boxShadow:'0 32px 80px rgba(0,0,0,0.25)', textAlign:'center' }}>
+          <div style={{ fontSize:64, marginBottom:16 }}>📬</div>
+          <h2 style={{ fontFamily:'Playfair Display,serif', fontSize:26, color:'var(--forest)', marginBottom:12 }}>Check your email!</h2>
+          <p style={{ fontSize:15, color:'var(--text-mid)', lineHeight:1.7, marginBottom:8 }}>
+            We sent a verification link to:
+          </p>
+          <p style={{ fontSize:16, fontWeight:700, color:'var(--forest)', marginBottom:24 }}>{registered}</p>
+          <p style={{ fontSize:14, color:'var(--text-light)', lineHeight:1.7, marginBottom:32 }}>
+            Click the link in the email to activate your account. The link expires in 24 hours.
+          </p>
+          <button onClick={() => handleResend(registered)} disabled={resending}
+            style={{ background:'transparent', border:'2px solid var(--forest)', color:'var(--forest)', padding:'12px 28px', borderRadius:50, fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'Lato,sans-serif', marginBottom:16 }}>
+            {resending ? '⏳ Sending…' : '🔁 Resend verification email'}
+          </button>
+          <br/>
+          <button onClick={() => { setRegistered(null); setMode('login') }}
+            style={{ background:'none', border:'none', color:'var(--text-light)', fontSize:13, cursor:'pointer', fontFamily:'Lato,sans-serif' }}>
+            Back to Sign In
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Email not verified screen (shown when trying to login before verifying) ──
+  if (unverifiedEmail) {
+    return (
+      <div style={{ paddingTop:70, minHeight:'100vh', background:'linear-gradient(135deg,#1a3a08 0%,#2D5016 50%,#3d6b1f 100%)', display:'flex', alignItems:'center', justifyContent:'center', padding:'40px 24px' }}>
+        <div style={{ background:'#fff', borderRadius:28, padding:'48px 40px', maxWidth:480, width:'100%', boxShadow:'0 32px 80px rgba(0,0,0,0.25)', textAlign:'center' }}>
+          <div style={{ fontSize:64, marginBottom:16 }}>✉️</div>
+          <h2 style={{ fontFamily:'Playfair Display,serif', fontSize:26, color:'var(--forest)', marginBottom:12 }}>Verify your email first</h2>
+          <p style={{ fontSize:15, color:'var(--text-mid)', lineHeight:1.7, marginBottom:8 }}>
+            Your account is not yet activated. Please check your inbox for the verification email sent to:
+          </p>
+          <p style={{ fontSize:16, fontWeight:700, color:'var(--forest)', marginBottom:24 }}>{unverifiedEmail}</p>
+          <button onClick={() => handleResend(unverifiedEmail)} disabled={resending}
+            style={{ background:'var(--forest)', color:'#fff', padding:'14px 32px', borderRadius:50, border:'none', fontWeight:700, fontSize:15, cursor:'pointer', fontFamily:'Lato,sans-serif', boxShadow:'0 6px 20px rgba(45,80,22,0.3)', marginBottom:16 }}>
+            {resending ? '⏳ Sending…' : '📧 Resend verification email'}
+          </button>
+          <br/>
+          <button onClick={() => setUnverifiedEmail(null)}
+            style={{ background:'none', border:'none', color:'var(--text-light)', fontSize:13, cursor:'pointer', fontFamily:'Lato,sans-serif' }}>
+            Back to Sign In
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -107,6 +181,9 @@ export default function LoginRegister() {
             <div>
               <Field label="Password" name="password" placeholder="Your password" icon="🔒" form={loginForm} setForm={setLoginForm} errors={errors} setErrors={setErrors} showPwd={showPwd} />
               <button onClick={() => setShowPwd(p => !p)} style={{ background:'none', border:'none', color:'var(--forest)', fontSize:12, fontWeight:600, cursor:'pointer', marginTop:4, fontFamily:'Lato,sans-serif' }}>{showPwd?'🙈 Hide':'👁 Show'} password</button>
+              <div style={{ textAlign:'right', marginTop:4 }}>
+                <Link to="/forgot-password" style={{ fontSize:12, color:'var(--text-light)', fontWeight:600 }}>Forgot password?</Link>
+              </div>
             </div>
             <button onClick={handleLogin} disabled={loading} style={{ background: loading?'var(--earth)':'linear-gradient(135deg,var(--forest),#3d6b1f)', color:'#fff', padding:15, borderRadius:50, border:'none', fontWeight:700, fontSize:16, cursor:loading?'not-allowed':'pointer', fontFamily:'Lato,sans-serif', boxShadow:'0 6px 20px rgba(45,80,22,0.3)', marginTop:8 }}>
               {loading ? '⏳ Signing In…' : '🌿 Sign In'}

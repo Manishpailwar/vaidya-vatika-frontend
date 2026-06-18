@@ -24,6 +24,17 @@ export default function Navbar() {
     setUser(JSON.parse(localStorage.getItem('vv_current_user') || 'null'))
   }, [location])
 
+  // Listen for localStorage changes from other components (e.g. after email verification)
+  useEffect(() => {
+    const syncUser = () => setUser(JSON.parse(localStorage.getItem('vv_current_user') || 'null'))
+    window.addEventListener('storage', syncUser)
+    window.addEventListener('userUpdated', syncUser)
+    return () => {
+      window.removeEventListener('storage', syncUser)
+      window.removeEventListener('userUpdated', syncUser)
+    }
+  }, [])
+
   const handleLogout = () => {
     setMenuOpen(false)
     setShowLogoutConfirm(true)

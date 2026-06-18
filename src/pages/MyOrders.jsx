@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { getOrdersByEmail, cancelOrder } from '../api/api'
+import { getMyOrders, cancelOrder } from '../api/api'
 import ConfirmDialog from '../components/ConfirmDialog'
 import toast from 'react-hot-toast'
 
@@ -52,10 +52,9 @@ export default function MyOrders() {
   const [confirmId, setConfirmId] = useState(null)
 
   const handleSearch = async () => {
-    if (!email.trim()) { toast.error('Enter your email'); return }
     setLoading(true); setError(null)
     try {
-      const res = await getOrdersByEmail(email)
+      const res = await getMyOrders()
       setOrders(res.data); setSearched(true)
       if (res.data.length === 0) toast('No orders found for this email', { style:{ background:'var(--bark)', color:'#fff', borderRadius:12 } })
     } catch {

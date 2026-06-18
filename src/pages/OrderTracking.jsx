@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
+import { useParams, Link, useNavigate } from 'react-router-dom'
 import { getOrderById, cancelOrder } from '../api/api'
 import toast from 'react-hot-toast'
 import ConfirmDialog from '../components/ConfirmDialog'
@@ -13,6 +13,39 @@ const STATUS_STEPS = [
 
 export default function OrderTracking() {
   const { orderId } = useParams()
+  const navigate = useNavigate()
+
+  // Auth guard — order tracking requires login.
+  // Without this, anyone can enumerate orders by guessing numeric IDs
+  // (e.g. /track/1, /track/2 ...) and see every customer's name,
+  // phone, address and order details.
+  const currentUser = (() => {
+    try { return JSON.parse(localStorage.getItem('vv_current_user') || 'null') } catch { return null }
+  })()
+
+  if (!currentUser) {
+    return (
+      <div style={{ paddingTop:90, minHeight:'100vh', background:'var(--cream)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+        <div style={{ background:'#fff', borderRadius:24, padding:'48px 40px', boxShadow:'0 12px 40px rgba(45,80,22,0.10)', maxWidth:420, width:'100%', margin:'0 24px', textAlign:'center' }}>
+          <div style={{ fontSize:56, marginBottom:16 }}>🔒</div>
+          <h2 style={{ fontFamily:'Playfair Display,serif', fontSize:26, color:'var(--forest)', marginBottom:8 }}>Sign in to track your order</h2>
+          <p style={{ fontSize:14, color:'var(--text-light)', marginBottom:28 }}>
+            Your order details are private. Please sign in to view them.
+          </p>
+          <div style={{ display:'flex', gap:12, justifyContent:'center', flexWrap:'wrap' }}>
+            <button
+              onClick={() => navigate('/login', { state: { from: `/track/${orderId || ''}` } })}
+              style={{ background:'var(--forest)', color:'#fff', padding:'13px 28px', borderRadius:50, border:'none', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'Lato,sans-serif', boxShadow:'0 6px 20px rgba(45,80,22,0.3)' }}>
+              Sign In →
+            </button>
+            <Link to="/products" style={{ background:'#fff', color:'var(--forest)', padding:'13px 28px', borderRadius:50, fontWeight:700, fontSize:14, border:'2px solid rgba(45,80,22,0.2)' }}>
+              Continue Shopping
+            </Link>
+          </div>
+        </div>
+      </div>
+    )
+  }
   const [order, setOrder]       = useState(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const [searchId, setSearchId] = useState(orderId || '')

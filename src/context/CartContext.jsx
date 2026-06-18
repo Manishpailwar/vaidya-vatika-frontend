@@ -1,7 +1,7 @@
-import { createContext, useContext, useReducer } from 'react'
-import toast from 'react-hot-toast'
+import { createContext, useContext, useReducer, useEffect } from 'react'
 
 const CartContext = createContext()
+const STORAGE_KEY = 'vv_cart'
 
 const cartReducer = (state, action) => {
   switch (action.type) {
@@ -10,22 +10,20 @@ const cartReducer = (state, action) => {
       const stock = action.item.stock ?? Infinity
       if (exists) {
         const newQty = exists.qty + (action.qty || 1)
-        if (newQty > stock) {
-          // Signal to component — toast shown in component or here
-          return state.map(i => i.id === action.item.id ? { ...i, qty: stock } : i)
-        }
-        return state.map(i => i.id === action.item.id ? { ...i, qty: newQty } : i)
+        return state.map(i =>
+          i.id === action.item.id ? { ...i, qty: Math.min(newQty, stock) } : i
+        )
       }
-      const initialQty = Math.min(action.qty || 1, stock)
-      return [...state, { ...action.item, qty: initialQty }]
+      return [...state, { ...action.item, qty: Math.min(action.qty || 1, stock) }]
     }
     case 'REMOVE':
       return state.filter(i => i.id !== action.id)
     case 'UPDATE_QTY': {
       const item = state.find(i => i.id === action.id)
       const stock = item?.stock ?? Infinity
-      const clampedQty = Math.min(Math.max(1, action.qty), stock)
-      return state.map(i => i.id === action.id ? { ...i, qty: clampedQty } : i)
+      return state.map(i =>
+        i.id === action.id ? { ...i, qty: Math.min(Math.max(1, action.qty), stock) } : i
+      )
     }
     case 'CLEAR':
       return []
@@ -34,10 +32,31 @@ const cartReducer = (state, action) => {
   }
 }
 
+// FIXED: Read initial cart from localStorage so it survives page refresh.
+function loadCart() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    return saved ? JSON.parse(saved) : []
+  } catch {
+    return []
+  }
+}
+
 export const CartProvider = ({ children }) => {
-  const [cart, dispatch] = useReducer(cartReducer, [])
+  const [cart, dispatch] = useReducer(cartReducer, [], loadCart)
+
+  // FIXED: Every time the cart changes, save it to localStorage.
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cart))
+    } catch {
+      // localStorage quota exceeded — fail silently
+    }
+  }, [cart])
+
   const totalItems = cart.reduce((s, i) => s + i.qty, 0)
   const totalPrice = cart.reduce((s, i) => s + i.price * i.qty, 0)
+
   return (
     <CartContext.Provider value={{ cart, dispatch, totalItems, totalPrice }}>
       {children}

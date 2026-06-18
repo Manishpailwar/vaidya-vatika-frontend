@@ -26,47 +26,94 @@ const F = ({ label, name, type='text', placeholder, as, form, setForm }) => (
   </div>
 )
 
+/* ─── Cloudinary upload helper ─── */
+// Uploads a single File object to Cloudinary using an unsigned upload preset.
+// Returns the secure HTTPS URL of the uploaded asset.
+// Set VITE_CLOUDINARY_CLOUD_NAME and VITE_CLOUDINARY_UPLOAD_PRESET in your .env
+async function uploadToCloudinary(file) {
+  const cloud  = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME
+  const preset = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET
+  if (!cloud || !preset) {
+    throw new Error(
+      'Cloudinary is not configured. Add VITE_CLOUDINARY_CLOUD_NAME and ' +
+      'VITE_CLOUDINARY_UPLOAD_PRESET to your .env file.'
+    )
+  }
+  const body = new FormData()
+  body.append('file', file)
+  body.append('upload_preset', preset)
+  body.append('folder', 'vaidya-vatika/products')
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${cloud}/auto/upload`, {
+    method: 'POST',
+    body,
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err?.error?.message || `Cloudinary upload failed (${res.status})`)
+  }
+  const data = await res.json()
+  return data.secure_url   // always an https:// URL
+}
+
 /* ─── Media Uploader ─── */
+// Files are uploaded to Cloudinary immediately on selection.
+// Only the returned HTTPS URLs are stored — no base64 data ever touches the DB.
 function MediaUploader({ mediaFiles, setForm }) {
   const inputRef = useRef()
   const [dragging, setDragging] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
-  const readFiles = (files) => {
+  const processFiles = async (files) => {
     const allowed = Array.from(files).filter(f =>
       f.type.startsWith('image/') || f.type.startsWith('video/')
     )
     if (!allowed.length) { toast.error('Only images and videos are supported'); return }
 
-    allowed.forEach(file => {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const entry = {
-          name: file.name,
-          type: file.type.startsWith('video/') ? 'video' : 'image',
-          dataUrl: e.target.result,
-          size: file.size,
-        }
-        setForm(f => {
-          const already = (f.mediaFiles||[]).some(m => m.name === file.name && m.size === file.size)
-          if (already) return f
-          return { ...f, mediaFiles: [...(f.mediaFiles||[]), entry] }
+    setUploading(true)
+    const toastId = toast.loading(`Uploading ${allowed.length} file${allowed.length > 1 ? 's' : ''}…`)
+
+    try {
+      const results = await Promise.all(
+        allowed.map(async (file) => {
+          const url = await uploadToCloudinary(file)
+          return {
+            name: file.name,
+            type: file.type.startsWith('video/') ? 'video' : 'image',
+            url,          // Cloudinary HTTPS URL — this is all we store
+            size: file.size,
+          }
         })
-      }
-      reader.readAsDataURL(file)
-    })
+      )
+
+      setForm(f => {
+        const existing = f.mediaFiles || []
+        // Deduplicate by name+size
+        const fresh = results.filter(r =>
+          !existing.some(m => m.name === r.name && m.size === r.size)
+        )
+        const updated = [...existing, ...fresh]
+        const firstImg = updated.find(m => m.type === 'image')
+        return { ...f, mediaFiles: updated, imageUrl: firstImg ? firstImg.url : f.imageUrl }
+      })
+
+      toast.success(`${results.length} file${results.length > 1 ? 's' : ''} uploaded ✓`, { id: toastId, style:{ background:'var(--forest)', color:'#fff', borderRadius:12 } })
+    } catch (err) {
+      toast.error(err.message || 'Upload failed', { id: toastId })
+    } finally {
+      setUploading(false)
+    }
   }
 
   const handleDrop = (e) => {
     e.preventDefault(); setDragging(false)
-    readFiles(e.dataTransfer.files)
+    processFiles(e.dataTransfer.files)
   }
 
   const removeMedia = (index) => {
     setForm(f => {
       const updated = f.mediaFiles.filter((_, i) => i !== index)
-      // If first image was removed, update imageUrl to next image
       const firstImg = updated.find(m => m.type === 'image')
-      return { ...f, mediaFiles: updated, imageUrl: firstImg ? firstImg.dataUrl : '' }
+      return { ...f, mediaFiles: updated, imageUrl: firstImg ? firstImg.url : '' }
     })
   }
 
@@ -76,7 +123,7 @@ function MediaUploader({ mediaFiles, setForm }) {
       const [item] = arr.splice(from, 1)
       arr.splice(to, 0, item)
       const firstImg = arr.find(m => m.type === 'image')
-      return { ...f, mediaFiles: arr, imageUrl: firstImg ? firstImg.dataUrl : f.imageUrl }
+      return { ...f, mediaFiles: arr, imageUrl: firstImg ? firstImg.url : f.imageUrl }
     })
   }
 
@@ -93,24 +140,25 @@ function MediaUploader({ mediaFiles, setForm }) {
         onDragOver={e=>{e.preventDefault();setDragging(true)}}
         onDragLeave={()=>setDragging(false)}
         onDrop={handleDrop}
-        onClick={()=>inputRef.current.click()}
+        onClick={()=>!uploading && inputRef.current.click()}
         style={{
           border:`2px dashed ${dragging?'var(--forest)':'rgba(45,80,22,0.25)'}`,
           borderRadius:16,
           padding:'32px 20px',
           textAlign:'center',
-          cursor:'pointer',
+          cursor: uploading ? 'not-allowed' : 'pointer',
           background: dragging?'rgba(45,80,22,0.04)':'rgba(45,80,22,0.01)',
+          opacity: uploading ? 0.6 : 1,
           transition:'all 0.2s',
           marginBottom: mediaFiles.length ? 16 : 0,
         }}
       >
-        <div style={{ fontSize:36, marginBottom:8 }}>📁</div>
+        <div style={{ fontSize:36, marginBottom:8 }}>{uploading ? '⏳' : '📁'}</div>
         <div style={{ fontWeight:700, fontSize:14, color:'var(--forest)', marginBottom:4 }}>
-          Click to browse or drag & drop files here
+          {uploading ? 'Uploading to Cloudinary…' : 'Click to browse or drag & drop files here'}
         </div>
         <div style={{ fontSize:12, color:'var(--text-light)' }}>
-          Supports JPG, PNG, WebP, GIF, MP4, MOV, WebM · Multiple files allowed
+          Supports JPG, PNG, WebP, GIF, MP4, MOV, WebM · Files are uploaded to Cloudinary
         </div>
         <input
           ref={inputRef}
@@ -118,7 +166,8 @@ function MediaUploader({ mediaFiles, setForm }) {
           multiple
           accept="image/*,video/*"
           style={{ display:'none' }}
-          onChange={e=>readFiles(e.target.files)}
+          onChange={e=>processFiles(e.target.files)}
+          disabled={uploading}
         />
       </div>
 
@@ -126,16 +175,16 @@ function MediaUploader({ mediaFiles, setForm }) {
       {mediaFiles.length > 0 && (
         <div>
           <div style={{ fontSize:12, color:'var(--text-light)', marginBottom:8 }}>
-            {mediaFiles.length} file{mediaFiles.length!==1?'s':''} added · First image is used as product thumbnail · Drag to reorder
+            {mediaFiles.length} file{mediaFiles.length!==1?'s':''} uploaded · First image is product thumbnail · Drag to reorder
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))', gap:10 }}>
             {mediaFiles.map((m, i) => (
               <div key={i} style={{ position:'relative', borderRadius:12, overflow:'hidden', border:`2px solid ${i===0?'var(--forest)':'rgba(45,80,22,0.15)'}`, background:'#f9f9f9' }}>
-                {/* Thumbnail */}
+                {/* Thumbnail — uses Cloudinary URL directly */}
                 {m.type === 'image' ? (
-                  <img src={m.dataUrl} alt={m.name} style={{ width:'100%', height:100, objectFit:'cover', display:'block' }} />
+                  <img src={m.url} alt={m.name} style={{ width:'100%', height:100, objectFit:'cover', display:'block' }} />
                 ) : (
-                  <video src={m.dataUrl} style={{ width:'100%', height:100, objectFit:'cover', display:'block' }} muted />
+                  <video src={m.url} style={{ width:'100%', height:100, objectFit:'cover', display:'block' }} muted />
                 )}
 
                 {/* Type badge */}
@@ -210,7 +259,7 @@ export default function AdminPanel() {
     setLoading(true)
     try {
       const res = await verifyAdmin(pwd)
-      if (res.data.success) {
+      if (res.data.valid) {
         sessionStorage.setItem('vv_admin', 'true')
         if (res.data.token) sessionStorage.setItem('vv_admin_token', res.data.token)
         setAuthed(true)
@@ -234,9 +283,12 @@ export default function AdminPanel() {
     if (!form.name || !form.price || !form.stock) { toast.error('Name, price and stock are required'); return }
     setLoading(true)
     try {
-      // Primary imageUrl = first image in mediaFiles, else the URL field
+      // imageUrl = first uploaded Cloudinary image URL, or fallback URL typed manually
       const firstImg = (form.mediaFiles||[]).find(m => m.type === 'image')
-      const imageUrl = firstImg ? firstImg.dataUrl : (form.imageUrl || '')
+      const imageUrl = firstImg ? firstImg.url : (form.imageUrl || '')
+
+      // mediaFiles stored as a lean JSON array of { name, type, url } — no base64 blobs
+      const leanMediaFiles = (form.mediaFiles||[]).map(({ name, type, url, size }) => ({ name, type, url, size }))
 
       const payload = {
         name: form.name,
@@ -244,9 +296,7 @@ export default function AdminPanel() {
         price: +form.price,
         stock: +form.stock,
         imageUrl,
-        mediaFiles: form.mediaFiles && form.mediaFiles.length > 0
-          ? JSON.stringify(form.mediaFiles)
-          : null,
+        mediaFiles: leanMediaFiles.length > 0 ? JSON.stringify(leanMediaFiles) : null,
         category: form.category,
         badge: form.badge || '',
       }
@@ -269,10 +319,20 @@ export default function AdminPanel() {
   const handleEdit = (p) => {
     let parsedMedia = []
     if (p.mediaFiles) {
-      try { parsedMedia = JSON.parse(p.mediaFiles) } catch {}
+      try {
+        const raw = JSON.parse(p.mediaFiles)
+        // Normalise: old records may have dataUrl; convert to url field
+        parsedMedia = raw.map(m => ({
+          name: m.name || 'image.jpg',
+          type: m.type || 'image',
+          url: m.url || m.dataUrl || '',   // prefer url, fall back to legacy dataUrl
+          size: m.size || 0,
+        }))
+      } catch {}
     }
+    // If no mediaFiles but product has an imageUrl, seed the uploader with it
     if (!parsedMedia.length && p.imageUrl) {
-      parsedMedia = [{ name:'current-image.jpg', type:'image', dataUrl: p.imageUrl, size: 0 }]
+      parsedMedia = [{ name: 'current-image.jpg', type: 'image', url: p.imageUrl, size: 0 }]
     }
     setForm({
       name: p.name,
