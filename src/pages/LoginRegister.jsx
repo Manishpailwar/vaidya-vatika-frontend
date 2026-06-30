@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { loginUser, registerUser, resendVerification } from '../api/api'
 import toast from 'react-hot-toast'
 
@@ -29,7 +29,9 @@ export default function LoginRegister() {
   const [loading, setLoading]       = useState(false)
   const [showPwd, setShowPwd]       = useState(false)
   const [registered, setRegistered]   = useState(null)  // email after successful register
-  const [unverifiedEmail, setUnverifiedEmail] = useState(null) // email blocked at login
+  const [unverifiedEmail, setUnverifiedEmail] = useState(null)
+  const [searchParams] = useSearchParams()
+  const sessionExpired = searchParams.get('reason') === 'expired' // email blocked at login
   const [resending, setResending]     = useState(false)
 
   const validateLogin = () => {
@@ -155,6 +157,12 @@ export default function LoginRegister() {
     <div style={{ paddingTop:70, minHeight:'100vh', background:'linear-gradient(135deg,#1a3a08 0%,#2D5016 50%,#3d6b1f 100%)', display:'flex', alignItems:'center', justifyContent:'center', padding:'40px 24px' }}>
       <div style={{ background:'#fff', borderRadius:28, padding:'48px 40px', maxWidth:480, width:'100%', boxShadow:'0 32px 80px rgba(0,0,0,0.25)' }}>
         {/* Logo */}
+        {/* Session expired banner */}
+        {sessionExpired && (
+          <div style={{ background:'#fff3e0', border:'2px solid #ff9800', borderRadius:12, padding:'12px 16px', marginBottom:20, fontSize:13, color:'#e65100', fontWeight:600, textAlign:'center' }}>
+            ⏰ Your session has expired. Please sign in again.
+          </div>
+        )}
         <div style={{ textAlign:'center', marginBottom:32 }}>
           <Link to="/" style={{ display:'inline-flex', alignItems:'center', gap:10 }}>
             <div style={{ width:48, height:48, borderRadius:'50%', background:'linear-gradient(135deg,#2D5016,#F4A224)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, boxShadow:'0 4px 16px rgba(45,80,22,0.3)' }}>🌿</div>

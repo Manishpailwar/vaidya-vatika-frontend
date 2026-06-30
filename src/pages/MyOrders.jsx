@@ -174,11 +174,47 @@ export default function MyOrders() {
                         </p>
                       </div>
                     </div>
+
+                    {/* Invoice Breakdown */}
+                    {(() => {
+                      const itemsSubtotal = order.items?.reduce((s, i) => s + i.totalPrice, 0) || 0
+                      const shipping = itemsSubtotal > 499 ? 0 : 49
+                      const gst = Math.round(itemsSubtotal * 0.05)
+                      const discount = order.discountAmount || 0
+                      return (
+                        <div style={{ marginTop:20, background:'#fafafa', borderRadius:14, border:'1px solid rgba(45,80,22,0.1)', overflow:'hidden' }}>
+                          <div style={{ padding:'12px 16px', background:'rgba(45,80,22,0.05)', borderBottom:'1px solid rgba(45,80,22,0.08)' }}>
+                            <h4 style={{ fontFamily:'Playfair Display,serif', fontSize:15, color:'var(--bark)', margin:0 }}>🧾 Invoice Breakdown</h4>
+                          </div>
+                          <div style={{ padding:'4px 0' }}>
+                            {[
+                              ['Items Subtotal', `₹${itemsSubtotal}`],
+                              ['Shipping', shipping === 0 ? 'FREE' : `₹${shipping}`],
+                              ['GST (5%)', `₹${gst}`],
+                            ].map(([label, value]) => (
+                              <div key={label} style={{ display:'flex', justifyContent:'space-between', padding:'9px 16px', borderBottom:'1px solid #f0f0f0', fontSize:13, color:'var(--text-mid)' }}>
+                                <span>{label}</span><span>{value}</span>
+                              </div>
+                            ))}
+                            {discount > 0 && (
+                              <div style={{ display:'flex', justifyContent:'space-between', padding:'9px 16px', borderBottom:'1px solid #f0f0f0', fontSize:13, color:'#2D5016', background:'#f0faf0' }}>
+                                <span>🎟 Coupon {order.couponCode ? `(${order.couponCode})` : ''}</span>
+                                <span style={{ fontWeight:700 }}>−₹{discount}</span>
+                              </div>
+                            )}
+                            <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 16px', background:'var(--forest)', fontSize:15, fontWeight:700, color:'#fff' }}>
+                              <span>Total Paid</span>
+                              <span>₹{order.totalAmount}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+
                     <div style={{ display:'flex', gap:12, marginTop:16, flexWrap:'wrap' }}>
                       <Link to={`/track/${order.id}`} style={{ background:'var(--forest)', color:'#fff', padding:'9px 20px', borderRadius:50, fontWeight:700, fontSize:13 }}>
                         🚚 Track Order
                       </Link>
-
                     </div>
                   </div>
                 )}

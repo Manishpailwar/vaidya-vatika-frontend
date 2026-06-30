@@ -219,6 +219,42 @@ export default function OrderTracking() {
               </div>
             </div>
 
+            {/* Invoice Breakdown */}
+            {(() => {
+              const itemsSubtotal = order.items?.reduce((s, i) => s + i.totalPrice, 0) || 0
+              const shipping = itemsSubtotal > 499 ? 0 : 49
+              const gst = Math.round(itemsSubtotal * 0.05)
+              const discount = order.discountAmount || 0
+              return (
+                <div style={{ background:'#fff', borderRadius:20, overflow:'hidden', boxShadow:'0 4px 16px rgba(45,80,22,0.07)' }}>
+                  <div style={{ padding:'18px 24px', background:'rgba(45,80,22,0.04)', borderBottom:'1px solid rgba(45,80,22,0.08)' }}>
+                    <h3 style={{ fontFamily:'Playfair Display,serif', fontSize:18, color:'var(--bark)', margin:0 }}>🧾 Invoice Breakdown</h3>
+                  </div>
+                  <div>
+                    {[
+                      ['Items Subtotal', `₹${itemsSubtotal}`],
+                      ['Shipping', shipping === 0 ? 'FREE' : `₹${shipping}`],
+                      ['GST (5%)', `₹${gst}`],
+                    ].map(([label, value]) => (
+                      <div key={label} style={{ display:'flex', justifyContent:'space-between', padding:'12px 24px', borderBottom:'1px solid #f5f5f5', fontSize:14, color:'var(--text-mid)' }}>
+                        <span>{label}</span><span>{value}</span>
+                      </div>
+                    ))}
+                    {discount > 0 && (
+                      <div style={{ display:'flex', justifyContent:'space-between', padding:'12px 24px', borderBottom:'1px solid #f5f5f5', fontSize:14, color:'#2D5016', background:'#f0faf0' }}>
+                        <span>🎟 Coupon {order.couponCode ? `(${order.couponCode})` : ''}</span>
+                        <span style={{ fontWeight:700 }}>−₹{discount}</span>
+                      </div>
+                    )}
+                    <div style={{ display:'flex', justifyContent:'space-between', padding:'16px 24px', background:'var(--forest)', fontSize:16, fontWeight:700, color:'#fff' }}>
+                      <span>Total Paid</span>
+                      <span style={{ fontFamily:'Playfair Display,serif', fontSize:20 }}>₹{order.totalAmount}</span>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             {/* Actions */}
             <div style={{ display:'flex', gap:14, flexWrap:'wrap' }}>
               <Link to="/products" style={{ background:'var(--forest)', color:'#fff', padding:'13px 28px', borderRadius:50, fontWeight:700, fontSize:14, boxShadow:'0 4px 14px rgba(45,80,22,0.25)', display:'inline-block' }}>🌿 Shop Again</Link>

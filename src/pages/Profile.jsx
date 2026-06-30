@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { getUser, updateUser, getMyOrders } from '../api/api'
+import { getUser, updateUser, getOrdersByEmail } from '../api/api'
 import toast from 'react-hot-toast'
 import ConfirmDialog from '../components/ConfirmDialog'
 
@@ -54,7 +54,7 @@ export default function Profile() {
         .catch(() => {})
     }
 
-    getMyOrders()
+    getOrdersByEmail(u.email)
       .then(res => setOrders(Array.isArray(res.data) ? res.data : []))
       .catch(() => {})
   }, [navigate])
@@ -91,6 +91,17 @@ export default function Profile() {
     } catch (err) {
       toast.error(err.response?.data?.message || 'Could not change password')
     } finally { setSaving(false) }
+  }
+
+  const handleCancelOrder = async (orderId) => {
+    if (!window.confirm('Are you sure you want to cancel this order?')) return
+    try {
+      await cancelOrder(orderId)
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status: 'CANCELLED' } : o))
+      toast.success('Order cancelled successfully', { style:{ background:'var(--bark)', color:'#fff', borderRadius:12 } })
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not cancel order')
+    }
   }
 
   const handleLogout = () => setShowLogoutConfirm(true)
@@ -195,6 +206,12 @@ export default function Profile() {
                   <div style={{ fontFamily:'Playfair Display,serif', fontSize:20, fontWeight:700, color:'var(--forest)' }}>₹{order.totalAmount}</div>
                   <span style={{ padding:'5px 14px', borderRadius:20, fontSize:12, fontWeight:700, color:'#fff', background: STATUS_COLORS[order.status]||'#2D5016' }}>{order.status}</span>
                   <Link to={`/track/${order.id}`} style={{ fontSize:13, fontWeight:600, color:'var(--forest)', border:'2px solid rgba(45,80,22,0.2)', padding:'7px 16px', borderRadius:20 }}>Track →</Link>
+                  {order.status === 'PLACED' && (
+                    <button onClick={() => handleCancelOrder(order.id)}
+                      style={{ fontSize:13, fontWeight:600, color:'#c62828', border:'2px solid rgba(229,57,53,0.3)', padding:'7px 16px', borderRadius:20, background:'transparent', cursor:'pointer', fontFamily:'Lato,sans-serif' }}>
+                      Cancel
+                    </button>
+                  )}
                 </div>
               ))
             )}

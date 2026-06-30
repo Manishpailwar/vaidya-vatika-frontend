@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { getProductImage } from '../utils/productImage'
-import { getProducts, addProduct, updateProduct, deleteProduct, getAllOrders, updateOrderStatus, verifyAdmin, getAdminStats } from '../api/api'
+import { getProducts, addProduct, updateProduct, deleteProduct, getAllOrders, updateOrderStatus, verifyAdmin, getAdminStats, getAdminCoupons, createCoupon, toggleCoupon, deleteCoupon } from '../api/api'
 import toast from 'react-hot-toast'
 
-const INIT = { name:'', description:'', price:'', imageUrl:'', mediaFiles:[], category:'Grains', stock:'', badge:'' }
+const INIT = { name:'', description:'', price:'', imageUrl:'', mediaFiles:[], category:'Grains', stock:'', badge:'', details:'', howToUse:'', keyIngredients:'', specifications:'' }
 const CATEGORIES = ['Grains','Honey','Herbs','Oils']
 const BADGES     = ['','Bestseller','Pure','Organic','Virgin','Superfood','Fresh Ground','Limited','Classical']
 const STATUSES   = ['PLACED','PROCESSING','SHIPPED','DELIVERED','CANCELLED']
@@ -241,17 +241,51 @@ export default function AdminPanel() {
   const [showForm, setShowForm] = useState(false)
   const [loading, setLoading]   = useState(false)
   const [expandedOrder, setExpandedOrder] = useState(null)
+  const [coupons, setCoupons] = useState([])
+  const [couponForm, setCouponForm] = useState({ code:'', discountType:'PERCENTAGE', discountValue:'', minOrderAmount:'', maxDiscountAmount:'', maxUses:'', expiresAt:'' })
+  const [showCouponForm, setShowCouponForm] = useState(false)
   const [statusFilter, setStatusFilter]   = useState('ALL')
 
   const loadProducts = async () => { try { const r = await getProducts(); setProducts(r.data) } catch { toast.error('Could not load products') } }
   const loadOrders   = async () => { try { const r = await getAllOrders();  setOrders(r.data)   } catch { toast.error('Could not load orders')   } }
   const loadStats    = async () => { try { const r = await getAdminStats(); setStats(r.data)    } catch {} }
+  const loadCoupons  = async () => { try { const r = await getAdminCoupons(); setCoupons(r.data)  } catch {} }
+
+  const handleCreateCoupon = async () => {
+    if (!couponForm.code || !couponForm.discountValue) { toast.error('Code and discount value required'); return }
+    try {
+      const payload = {
+        code: couponForm.code.toUpperCase(),
+        discountType: couponForm.discountType,
+        discountValue: +couponForm.discountValue,
+        minOrderAmount: couponForm.minOrderAmount ? +couponForm.minOrderAmount : null,
+        maxDiscountAmount: couponForm.maxDiscountAmount ? +couponForm.maxDiscountAmount : null,
+        maxUses: couponForm.maxUses ? +couponForm.maxUses : null,
+        expiresAt: couponForm.expiresAt ? new Date(couponForm.expiresAt).toISOString() : null,
+      }
+      await createCoupon(payload)
+      await loadCoupons()
+      setShowCouponForm(false)
+      setCouponForm({ code:'', discountType:'PERCENTAGE', discountValue:'', minOrderAmount:'', maxDiscountAmount:'', maxUses:'', expiresAt:'' })
+      toast.success('Coupon created! 🎟', { style:{ background:'var(--forest)', color:'#fff', borderRadius:12 } })
+    } catch (err) { toast.error(err.response?.data?.message || 'Could not create coupon') }
+  }
+
+  const handleToggleCoupon = async (id) => {
+    try { await toggleCoupon(id); await loadCoupons() } catch { toast.error('Could not update coupon') }
+  }
+
+  const handleDeleteCoupon = async (id, code) => {
+    if (!window.confirm(`Delete coupon "${code}"?`)) return
+    try { await deleteCoupon(id); setCoupons(prev => prev.filter(c => c.id !== id)); toast(`Coupon ${code} deleted`, { style:{ background:'var(--bark)', color:'#fff', borderRadius:12 } }) } catch { toast.error('Could not delete coupon') }
+  }
 
   useEffect(() => {
     if (!authed) return
     if (tab === 'dashboard') loadStats()
     if (tab === 'products')  loadProducts()
     if (tab === 'orders')    loadOrders()
+    if (tab === 'coupons')   loadCoupons()
   }, [authed, tab])
 
   const handleLogin = async () => {
@@ -259,7 +293,7 @@ export default function AdminPanel() {
     setLoading(true)
     try {
       const res = await verifyAdmin(pwd)
-      if (res.data.valid) {
+      if (res.data.success) {
         sessionStorage.setItem('vv_admin', 'true')
         if (res.data.token) sessionStorage.setItem('vv_admin_token', res.data.token)
         setAuthed(true)
@@ -299,6 +333,10 @@ export default function AdminPanel() {
         mediaFiles: leanMediaFiles.length > 0 ? JSON.stringify(leanMediaFiles) : null,
         category: form.category,
         badge: form.badge || '',
+        details: form.details || '',
+        howToUse: form.howToUse || '',
+        keyIngredients: form.keyIngredients || '',
+        specifications: form.specifications || '',
       }
 
       if (editing !== null) {
@@ -343,6 +381,10 @@ export default function AdminPanel() {
       category: p.category,
       stock: String(p.stock),
       badge: p.badge || '',
+      details: p.details || '',
+      howToUse: p.howToUse || '',
+      keyIngredients: p.keyIngredients || '',
+      specifications: p.specifications || '',
     })
     setEditing(p.id); setShowForm(true); window.scrollTo({top:0,behavior:'smooth'})
   }
@@ -411,7 +453,7 @@ export default function AdminPanel() {
       <div className="container" style={{ paddingTop:32, paddingBottom:80 }}>
         {/* Tabs */}
         <div style={{ display:'flex', gap:8, marginBottom:28, flexWrap:'wrap' }}>
-          {[['dashboard','📊 Dashboard'],['products','📦 Products'],['orders','🛒 Orders']].map(([t,label]) => (
+          {[['dashboard','📊 Dashboard'],['products','📦 Products'],['orders','🛒 Orders'],['coupons','🎟 Coupons']].map(([t,label]) => (
             <button key={t} onClick={()=>setTab(t)} style={{ padding:'11px 24px', borderRadius:50, border:'2px solid', borderColor:tab===t?'var(--forest)':'rgba(45,80,22,0.15)', background:tab===t?'var(--forest)':'#fff', color:tab===t?'#fff':'var(--text-mid)', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'Lato,sans-serif' }}>{label}</button>
           ))}
         </div>
@@ -448,6 +490,17 @@ export default function AdminPanel() {
                   <F label="Badge" name="badge" as="select" form={form} setForm={setForm} />
                   <div style={{ gridColumn:'1/-1' }}>
                     <MediaUploader mediaFiles={form.mediaFiles||[]} setForm={setForm} />
+                  </div>
+                  <div style={{ gridColumn:'1/-1' }}>
+                    <div style={{ borderTop:'2px solid rgba(45,80,22,0.08)', paddingTop:20, marginTop:4 }}>
+                      <div style={{ fontSize:13, fontWeight:700, color:'var(--forest)', marginBottom:16, textTransform:'uppercase', letterSpacing:1 }}>📋 Product Content Tabs</div>
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                        <div style={{ gridColumn:'1/-1' }}><F label="Details" name="details" placeholder="Full product details — sourcing, certifications, composition..." as="textarea" form={form} setForm={setForm} /></div>
+                        <div style={{ gridColumn:'1/-1' }}><F label="How to Use" name="howToUse" placeholder="Step 1: ...&#10;Step 2: ...&#10;Step 3: ..." as="textarea" form={form} setForm={setForm} /></div>
+                        <div style={{ gridColumn:'1/-1' }}><F label="Key Ingredients" name="keyIngredients" placeholder="e.g. Ashwagandha, Shatavari, Brahmi..." as="textarea" form={form} setForm={setForm} /></div>
+                        <div style={{ gridColumn:'1/-1' }}><F label="Product Specifications" name="specifications" placeholder="Weight: 500g&#10;Shelf Life: 12 months&#10;Storage: Cool dry place..." as="textarea" form={form} setForm={setForm} /></div>
+                      </div>
+                    </div>
                   </div>
                 </div>
                 <div style={{ marginTop:20, display:'flex', gap:12 }}>
@@ -620,6 +673,134 @@ export default function AdminPanel() {
             </div>
           )
         })()}
+        {/* Coupons Tab */}
+        {tab==='coupons' && (
+          <div>
+            <button onClick={()=>setShowCouponForm(!showCouponForm)} style={{ marginBottom:20, background:showCouponForm?'#e53935':'var(--forest)', color:'#fff', padding:'12px 28px', borderRadius:50, border:'none', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'Lato,sans-serif' }}>
+              {showCouponForm ? '✕ Cancel' : '+ Create Coupon'}
+            </button>
+
+            {showCouponForm && (
+              <div style={{ background:'#fff', borderRadius:20, padding:28, boxShadow:'0 4px 20px rgba(45,80,22,0.09)', marginBottom:28 }}>
+                <h3 style={{ fontFamily:'Playfair Display,serif', fontSize:20, color:'var(--bark)', marginBottom:20 }}>🎟 New Coupon</h3>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+
+                  {/* Code */}
+                  <div>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, color:'var(--text-mid)', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Code</label>
+                    <input type="text" value={couponForm.code} placeholder="SAVE10"
+                      onChange={e=>setCouponForm(f=>({...f,code:e.target.value}))}
+                      style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'2px solid rgba(45,80,22,0.15)', background:'#fff', fontSize:14, fontFamily:'Lato,sans-serif', outline:'none', boxSizing:'border-box' }} />
+                  </div>
+
+                  {/* Discount Type — moved to top so admin picks this BEFORE entering value */}
+                  <div>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, color:'var(--text-mid)', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Discount Type</label>
+                    <select value={couponForm.discountType} onChange={e=>setCouponForm(f=>({...f,discountType:e.target.value,maxDiscountAmount:''}))}
+                      style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'2px solid rgba(45,80,22,0.15)', background:'#fff', fontSize:14, fontFamily:'Lato,sans-serif', outline:'none', boxSizing:'border-box' }}>
+                      <option value="PERCENTAGE">Percentage (%)</option>
+                      <option value="FIXED">Fixed Amount (₹)</option>
+                    </select>
+                  </div>
+
+                  {/* Discount Value */}
+                  <div>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, color:'var(--text-mid)', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>
+                      Discount Value {couponForm.discountType === 'PERCENTAGE' ? '(%)' : '(₹)'}
+                    </label>
+                    <input type="text" value={couponForm.discountValue}
+                      placeholder={couponForm.discountType === 'PERCENTAGE' ? 'e.g. 10 for 10%' : 'e.g. 50 for ₹50 off'}
+                      onChange={e=>setCouponForm(f=>({...f,discountValue:e.target.value}))}
+                      style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'2px solid rgba(45,80,22,0.15)', background:'#fff', fontSize:14, fontFamily:'Lato,sans-serif', outline:'none', boxSizing:'border-box' }} />
+                  </div>
+
+                  {/* Min Order Amount */}
+                  <div>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, color:'var(--text-mid)', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Min Order Amount (₹)</label>
+                    <input type="text" value={couponForm.minOrderAmount} placeholder="Optional — e.g. 499"
+                      onChange={e=>setCouponForm(f=>({...f,minOrderAmount:e.target.value}))}
+                      style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'2px solid rgba(45,80,22,0.15)', background:'#fff', fontSize:14, fontFamily:'Lato,sans-serif', outline:'none', boxSizing:'border-box' }} />
+                  </div>
+
+                  {/* Max Discount Cap — only shown for PERCENTAGE type */}
+                  {couponForm.discountType === 'PERCENTAGE' && (
+                    <div>
+                      <label style={{ display:'block', fontSize:12, fontWeight:700, color:'var(--text-mid)', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>
+                        Max Discount Cap (₹)
+                        <span style={{ fontWeight:400, textTransform:'none', letterSpacing:0, marginLeft:6, color:'#e07b3a' }}>
+                          — leave empty for no cap
+                        </span>
+                      </label>
+                      <input type="text" value={couponForm.maxDiscountAmount} placeholder="Optional — e.g. 200"
+                        onChange={e=>setCouponForm(f=>({...f,maxDiscountAmount:e.target.value}))}
+                        style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'2px solid rgba(45,80,22,0.15)', background:'#fff', fontSize:14, fontFamily:'Lato,sans-serif', outline:'none', boxSizing:'border-box' }} />
+                    </div>
+                  )}
+
+                  {/* Max Uses */}
+                  <div>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, color:'var(--text-mid)', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Max Uses</label>
+                    <input type="text" value={couponForm.maxUses} placeholder="Optional — leave empty for unlimited"
+                      onChange={e=>setCouponForm(f=>({...f,maxUses:e.target.value}))}
+                      style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'2px solid rgba(45,80,22,0.15)', background:'#fff', fontSize:14, fontFamily:'Lato,sans-serif', outline:'none', boxSizing:'border-box' }} />
+                  </div>
+
+                  {/* Expires At */}
+                  <div>
+                    <label style={{ display:'block', fontSize:12, fontWeight:700, color:'var(--text-mid)', textTransform:'uppercase', letterSpacing:1, marginBottom:6 }}>Expires At</label>
+                    <input type="date" value={couponForm.expiresAt} placeholder=""
+                      onChange={e=>setCouponForm(f=>({...f,expiresAt:e.target.value}))}
+                      style={{ width:'100%', padding:'12px 14px', borderRadius:12, border:'2px solid rgba(45,80,22,0.15)', background:'#fff', fontSize:14, fontFamily:'Lato,sans-serif', outline:'none', boxSizing:'border-box' }} />
+                  </div>
+
+                </div>
+                <button onClick={handleCreateCoupon} style={{ marginTop:20, background:'var(--forest)', color:'#fff', padding:'12px 32px', borderRadius:50, border:'none', fontWeight:700, fontSize:14, cursor:'pointer', fontFamily:'Lato,sans-serif' }}>
+                  🎟 Create Coupon
+                </button>
+              </div>
+            )}
+
+            <div style={{ background:'#fff', borderRadius:20, overflow:'hidden', boxShadow:'0 4px 20px rgba(45,80,22,0.07)' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr style={{ background:'rgba(45,80,22,0.04)', borderBottom:'2px solid rgba(45,80,22,0.08)' }}>
+                    {['Code','Type','Value','Min Order','Uses','Expires','Status','Actions'].map(h=>(
+                      <th key={h} style={{ padding:'14px 16px', textAlign:'left', fontSize:12, fontWeight:700, color:'var(--text-mid)', textTransform:'uppercase', letterSpacing:1, whiteSpace:'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {coupons.length === 0 ? (
+                    <tr><td colSpan={8} style={{ textAlign:'center', padding:40, color:'var(--text-light)' }}>No coupons yet. Create your first one!</td></tr>
+                  ) : coupons.map(c => (
+                    <tr key={c.id} style={{ borderBottom:'1px solid rgba(45,80,22,0.06)' }}>
+                      <td style={{ padding:'14px 16px', fontWeight:700, color:'var(--forest)', fontFamily:'monospace', fontSize:15 }}>{c.code}</td>
+                      <td style={{ padding:'14px 16px', fontSize:13, color:'var(--text-mid)' }}>{c.discountType}</td>
+                      <td style={{ padding:'14px 16px', fontWeight:700, color:'var(--bark)' }}>{c.discountType==='PERCENTAGE'?`${c.discountValue}%`:`₹${c.discountValue}`}</td>
+                      <td style={{ padding:'14px 16px', fontSize:13, color:'var(--text-mid)' }}>{c.minOrderAmount?`₹${c.minOrderAmount}`:'—'}</td>
+                      <td style={{ padding:'14px 16px', fontSize:13, color:'var(--text-mid)' }}>{c.usedCount}{c.maxUses?`/${c.maxUses}`:''}</td>
+                      <td style={{ padding:'14px 16px', fontSize:13, color:'var(--text-mid)' }}>{c.expiresAt?new Date(c.expiresAt).toLocaleDateString('en-IN'):'Never'}</td>
+                      <td style={{ padding:'14px 16px' }}>
+                        <span style={{ padding:'4px 12px', borderRadius:20, fontSize:11, fontWeight:700, color:'#fff', background:c.isActive?'#2e7d32':'#e53935' }}>
+                          {c.isActive?'Active':'Inactive'}
+                        </span>
+                      </td>
+                      <td style={{ padding:'14px 16px' }}>
+                        <div style={{ display:'flex', gap:8 }}>
+                          <button onClick={()=>handleToggleCoupon(c.id)} style={{ background:'rgba(45,80,22,0.08)', color:'var(--forest)', border:'none', padding:'6px 12px', borderRadius:16, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'Lato,sans-serif' }}>
+                            {c.isActive?'Disable':'Enable'}
+                          </button>
+                          <button onClick={()=>handleDeleteCoupon(c.id,c.code)} style={{ background:'rgba(229,57,53,0.08)', color:'#c62828', border:'none', padding:'6px 12px', borderRadius:16, fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'Lato,sans-serif' }}>Delete</button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   )
